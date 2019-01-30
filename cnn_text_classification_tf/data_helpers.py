@@ -23,41 +23,57 @@ def clean_str(string):
     return string.strip().lower()
 
 
-def load_data_and_labels(positive_data_file, negative_data_file):
+def load_data_and_labels(data_files=[],
+                         labels=[]):
     """
-    Loads MR polarity data from files, splits the data into words and generates labels.
-    Returns split sentences and labels.
+    This loads the data from files and cleans the text. Since the data files
+    are stored by class, the labels can be added after reading in the 
+    file.
+    
+    So the output might look something like this:
+    ['some text', [0,0,1]]
+    
+    where [0,0,1] indicates class/label as a one-hot vector.
     """
-    # Load data from files
-    positive_examples = list(open(positive_data_file, "r", encoding='utf-8').readlines())
-    positive_examples = [s.strip() for s in positive_examples]
-    negative_examples = list(open(negative_data_file, "r", encoding='utf-8').readlines())
-    negative_examples = [s.strip() for s in negative_examples]
-    # Split by words
-    x_text = positive_examples + negative_examples
+    data_lengths = []
+    x_text = []
+    for file in data_files:
+        x_temp = list(open(file, "r", encoding='utf-8').readlines())
+        x_temp = [s.strip() for s in x_temp]
+        data_lengths = data_lengths + [len(x_temp)]
+        x_text = x_text + x_temp
+    
     x_text = [clean_str(sent) for sent in x_text]
+    
     # Generate labels
-    positive_labels = [[0, 1] for _ in positive_examples]
-    negative_labels = [[1, 0] for _ in negative_examples]
-    y = np.concatenate([positive_labels, negative_labels], 0)
+    labels_temp = []
+    for i in range(0, len(labels)):
+        labels_temp = labels_temp + [[labels[i] for _ in range(0, data_lengths[i])]]
+    y = np.concatenate(labels_temp, 0)
     return [x_text, y]
 
 
-def batch_iter(data, batch_size, num_epochs, shuffle=True):
+def batch_iter(x, y, batch_size, num_epochs, shuffle=True):
     """
     Generates a batch iterator for a dataset.
     """
-    data = np.array(data)
-    data_size = len(data)
-    num_batches_per_epoch = int((len(data)-1)/batch_size) + 1
+    data_size = len(x)
+    num_batches_per_epoch = int((data_size-1)/batch_size) + 1
     for epoch in range(num_epochs):
         # Shuffle the data at each epoch
         if shuffle:
             shuffle_indices = np.random.permutation(np.arange(data_size))
-            shuffled_data = data[shuffle_indices]
+            shuffled_x = x[shuffle_indices]
+            shuffled_y = y[shuffle_indices]
         else:
-            shuffled_data = data
+            shuffled_x = x
+            shuffled_y = y
         for batch_num in range(num_batches_per_epoch):
             start_index = batch_num * batch_size
             end_index = min((batch_num + 1) * batch_size, data_size)
-            yield shuffled_data[start_index:end_index]
+            batch_x = shuffled_x[start_index:end_index]
+            batch_y = shuffled_y[start_index:end_index]
+            # Reshape to match tensorflows expected input 
+            # (batch, num_channels, sequencelength)
+            batch_x = batch_x.reshape((batch_x.shape[0], batch_x.shape[2], batch_x.shape[1]))
+            yield zip(batch_x, batch_y)
